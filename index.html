@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GéoMaster Pro - Session Complète Corrigée</title>
+    <style>
+        :root { --primary: #2980b9; --secondary: #27ae60; --accent: #f39c12; --bg: #f8f9fa; --text: #2c3e50; }
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); color: var(--text); margin: 0; display: flex; justify-content: center; padding: 20px; touch-action: none; }
+        #app-container { width: 100%; max-width: 900px; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative; }
+        header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid var(--bg); padding-bottom: 15px; margin-bottom: 20px; }
+        .stats-badge { background: var(--primary); color: white; padding: 5px 15px; border-radius: 20px; font-weight: bold; }
+        #canvas-area { position: relative; background: #fff; border: 2px solid #eee; border-radius: 10px; height: 400px; overflow: hidden; }
+        #protractor-container { position: absolute; width: 300px; cursor: move; z-index: 100; user-select: none; }
+        .input-group { display: flex; gap: 10px; justify-content: center; margin: 20px 0; min-height: 50px; }
+        input, select { padding: 12px; border: 2px solid #ddd; border-radius: 8px; font-size: 16px; }
+        button { padding: 12px 25px; border: none; border-radius: 8px; cursor: pointer; font-weight: 600; transition: 0.2s; }
+        .btn-check { background: var(--secondary); color: white; }
+        .btn-next { background: var(--primary); color: white; width: 200px; }
+        #feedback { padding: 15px; border-radius: 8px; text-align: center; font-weight: bold; margin: 10px 0; display: none; }
+        .correct { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .incorrect { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div id="app-container">
+    <header>
+        <h2 style="margin:0;">📐 GéoMaster <span style="font-size: 0.5em; color: var(--accent);">Session 15 questions</span></h2>
+        <div>
+            <span class="stats-badge" id="progress-text">Question 1 / 15</span>
+            <span class="stats-badge" id="score-text" style="background:var(--secondary)">Score: 0</span>
+        </div>
+    </header>
+
+    <div id="game-view">
+        <p id="instruction" style="font-weight: 500; font-size: 1.1em; color: #444;"></p>
+        <div id="canvas-area">
+            <svg id="svg-root" width="100%" height="100%" viewBox="0 0 800 400"></svg>
+            <div id="protractor-container" class="hidden">
+                <svg viewBox="0 0 200 110" width="300">
+                    <path d="M 10 100 A 90 90 0 0 1 190 100 L 10 100" fill="rgba(255, 255, 255, 0.85)" stroke="#555" stroke-width="0.8"/>
+                    <circle cx="100" cy="100" r="3" fill="none" stroke="red" stroke-width="1"/>
+                    <line x1="100" y1="95" x2="100" y2="105" stroke="red" stroke-width="0.8"/>
+                    <line x1="95" y1="100" x2="105" y2="100" stroke="red" stroke-width="0.8"/>
+                    <line x1="10" y1="100" x2="190" y2="100" stroke="#000" stroke-width="1" stroke-dasharray="2,1"/>
+                    <g id="ticks-container"></g>
+                </svg>
+            </div>
+        </div>
+        <div id="ui-controls" class="input-group"></div>
+        <div id="feedback"></div>
+        <div style="text-align: center; margin-top: 10px; min-height: 50px;">
+            <button id="next-btn" class="btn-next hidden">Continuer</button>
+        </div>
+    </div>
+</div>
+
+<script>
+// --- HELPERS ---
+function drawLine(root, x1, y1, x2, y2, col, w) {
+    const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    l.setAttribute("x1", x1); l.setAttribute("y1", y1); l.setAttribute("x2", x2); l.setAttribute("y2", y2);
+    l.setAttribute("stroke", col); l.setAttribute("stroke-width", w);
+    root.appendChild(l);
+}
+
+function drawArc(root, cx, cy, r, startDeg, endDeg, col, w = 2) {
+    const startRad = startDeg * Math.PI / 180;
+    const endRad = endDeg * Math.PI / 180;
+    const x1 = cx + r * Math.cos(startRad); const y1 = cy + r * Math.sin(startRad);
+    const x2 = cx + r * Math.cos(endRad); const y2 = cy + r * Math.sin(endRad);
+    const largeArc = Math.abs(endDeg - startDeg) > 180 ? 1 : 0;
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`);
+    path.setAttribute("fill", "none"); path.setAttribute("stroke", col); path.setAttribute("stroke-width", w);
+    root.appendChild(path);
+}
+
+// --- RAPPORTEUR ---
+const ticks = document.getElementById('ticks-container');
+for (let i = 0; i <= 180; i += 10) {
+    const rad = (i * Math.PI) / 180;
+    const x1 = 100 + 90 * Math.cos(-rad); const y1 = 100 + 90 * Math.sin(-rad);
+    const x2 = 100 + 84 * Math.cos(-rad); const y2 = 100 + 84 * Math.sin(-rad);
+    const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    l.setAttribute("x1", x1); l.setAttribute("y1", y1); l.setAttribute("x2", x2); l.setAttribute("y2", y2);
+    l.setAttribute("stroke", "black"); l.setAttribute("stroke-width", "0.5");
+    ticks.appendChild(l);
+    if (i % 20 === 0) {
+        const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        t.setAttribute("x", 100 + 76 * Math.cos(-rad)); t.setAttribute("y", 100 + 76 * Math.sin(-rad));
+        t.setAttribute("font-size", "5"); t.setAttribute("text-anchor", "middle"); t.textContent = i;
+        ticks.appendChild(t);
+    }
+}
+const prot = document.getElementById('protractor-container');
+let isDrag = false; let offset = {x:0, y:0};
+prot.onmousedown = (e) => { isDrag = true; offset = {x: e.clientX-prot.offsetLeft, y: e.clientY-prot.offsetTop}; };
+document.onmousemove = (e) => { if(isDrag){ prot.style.left=(e.clientX-offset.x)+'px'; prot.style.top=(e.clientY-offset.y)+'px'; }};
+document.onmouseup = () => isDrag = false;
+
+// --- LOGIQUE JEU ---
+const TYPES = { CALCUL: 'calcul', ISOMETRIE: 'isometrie', MESURE: 'mesure' };
+let state = { currentIdx: 0, score: 0, questions: [] };
+
+function initQuestions() {
+    state.questions = [
+        { type: TYPES.MESURE, subtype: 'nul', val: 0, label: 'Nul', text: "Identifie cet angle (absence d'ouverture)." },
+        { type: TYPES.MESURE, subtype: 'droit', val: 90, label: 'Droit', text: "Quelle est la mesure de cet angle droit ?" },
+        { type: TYPES.MESURE, subtype: 'plat', val: 180, label: 'Plat', text: "Identifie cet angle plat." },
+        { type: TYPES.MESURE, subtype: 'plein', val: 360, label: 'Plein', text: "L'angle fait un tour complet. Quelle est sa mesure ?" },
+        { type: TYPES.MESURE, subtype: 'aigu', val: 40, label: 'Aigu', text: "Mesure précisément cet angle AIGU avec le rapporteur.", useProtractor: true },
+        { type: TYPES.MESURE, subtype: 'obtus', val: 130, label: 'Obtus', text: "Mesure précisément cet angle OBTUS avec le rapporteur.", useProtractor: true },
+        { type: TYPES.CALCUL, subtype: 'trapeze_rect', ans: 65, text: "Dans ce trapèze rectangle, l'angle obtus mesure 115°. Calcule l'angle rouge manquant." },
+        { type: TYPES.ISOMETRIE, subtype: 'rhombus', ans: 'oui', text: "Dans ce losange, les angles marqués en vert sont-ils isométriques ?" },
+        { type: TYPES.CALCUL, subtype: 'isocele_base', ans: 40, text: "Triangle isocèle : l'angle à la base mesure 70°. Calcule l'angle au sommet." },
+        { type: TYPES.ISOMETRIE, subtype: 'parallelo', ans: 'oui', text: "Dans ce parallélogramme, les angles opposés marqués sont-ils isométriques ?" }
+    ];
+}
+
+function draw(q) {
+    const root = document.getElementById('svg-root'); root.innerHTML = '';
+    const protC = document.getElementById('protractor-container');
+    protC.classList.add('hidden');
+
+    if (q.type === TYPES.MESURE) {
+        if(q.useProtractor) { protC.classList.remove('hidden'); protC.style.left="50px"; protC.style.top="50px"; }
+        const cx=400, cy=250, r=150; const rad = -q.val * Math.PI / 180;
+        drawLine(root, cx, cy, cx+r, cy, "black", 3);
+        if(q.val !== 0) drawLine(root, cx, cy, cx+Math.cos(rad)*r, cy+Math.sin(rad)*r, "black", 3);
+        if(q.val === 360) {
+            const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+            c.setAttribute("cx",cx); c.setAttribute("cy",cy); c.setAttribute("r",35);
+            c.setAttribute("fill","none"); c.setAttribute("stroke","orange"); c.setAttribute("stroke-width",2);
+            root.appendChild(c);
+        } else if(q.val > 0) drawArc(root, cx, cy, 35, -q.val, 0, "orange", 2);
+        const d = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        d.setAttribute("cx",cx); d.setAttribute("cy",cy); d.setAttribute("r",5); d.setAttribute("fill","red");
+        root.appendChild(d);
+    } else {
+        let pts = ""; let marks = [];
+        if(q.subtype === 'rhombus') { pts = "400,100 550,200 400,300 250,200"; marks = [[400,100,34,146], [400,300,214,326]]; }
+        if(q.subtype === 'parallelo') { pts = "300,150 550,150 500,280 250,280"; marks = [[300,150,0,70], [500,280,180,250]]; }
+        if(q.subtype === 'isocele_base') { pts = "400,100 300,300 500,300"; marks = [[400,100,63,117, "red"]]; }
+        if(q.subtype === 'trapeze_rect') { 
+            pts = "300,150 500,150 500,300 300,300"; // Carré temporaire
+            pts = "300,150 550,150 500,300 300,300"; // Trapèze rect
+            marks = [[300,300,270,360, "red"]];
+            // Ajouter symbole angle droit
+            const sq = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+            sq.setAttribute("x", 500-20); sq.setAttribute("y", 300-20); sq.setAttribute("width",20); sq.setAttribute("height",20);
+            sq.setAttribute("fill","none"); sq.setAttribute("stroke","blue"); root.appendChild(sq);
+        }
+        const poly = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        poly.setAttribute("points", pts); poly.setAttribute("fill", "#f9f9f9"); poly.setAttribute("stroke", "black"); poly.setAttribute("stroke-width", 2);
+        root.appendChild(poly);
+        marks.forEach(m => drawArc(root, m[0], m[1], 25, m[2], m[3], m[4] || "green", 3));
+    }
+}
+
+function loadQuestion() {
+    document.getElementById('feedback').style.display = 'none';
+    document.getElementById('next-btn').classList.add('hidden');
+    const ctrl = document.getElementById('ui-controls'); ctrl.innerHTML = '';
+    const q = state.questions[state.currentIdx];
+    document.getElementById('instruction').innerText = q.text;
+    document.getElementById('progress-text').innerText = `Question ${state.currentIdx + 1} / 10`;
+
+    if (q.type === TYPES.ISOMETRIE) {
+        ['Oui', 'Non'].forEach(c => {
+            const b = document.createElement('button'); b.innerText = c; b.className = 'btn-check';
+            b.onclick = () => checkAnswer(c.toLowerCase()); ctrl.appendChild(b);
+        });
+    } else {
+        const input = document.createElement('input'); input.type = 'number'; input.id = 'ans-val'; input.placeholder = 'Amplitude';
+        ctrl.appendChild(input);
+        if (q.type === TYPES.MESURE) {
+            const sel = document.createElement('select'); sel.id = 'ans-type';
+            ['Nul', 'Aigu', 'Droit', 'Obtus', 'Plat', 'Plein'].forEach(t => {
+                const o = document.createElement('option'); o.value = t.toLowerCase(); o.innerText = t;
+                sel.appendChild(o);
+            });
+            ctrl.appendChild(sel);
+        }
+        const b = document.createElement('button'); b.innerText = 'Valider'; b.className = 'btn-check';
+        b.onclick = () => checkAnswer(); ctrl.appendChild(b);
+    }
+    draw(q);
+}
+
+function checkAnswer(iso = null) {
+    const q = state.questions[state.currentIdx];
+    let ok = false;
+    if (q.type === TYPES.ISOMETRIE) ok = (iso === q.ans);
+    else {
+        const v = parseInt(document.getElementById('ans-val').value);
+        ok = (q.type === TYPES.MESURE) ? (v === q.val && document.getElementById('ans-type').value === q.subtype) : (v === q.ans);
+    }
+    const fb = document.getElementById('feedback'); fb.style.display = 'block';
+    fb.innerHTML = ok ? "Bravo !" : `Erreur. C'était ${q.val || q.ans}°.`;
+    fb.className = ok ? 'correct' : 'incorrect';
+    if(ok) state.score++;
+    document.getElementById('score-text').innerText = `Score: ${state.score}`;
+    document.getElementById('next-btn').classList.remove('hidden');
+}
+
+document.getElementById('next-btn').onclick = () => {
+    state.currentIdx++;
+    if(state.currentIdx < state.questions.length) loadQuestion();
+    else alert("Fin ! Score : " + state.score + "/10");
+};
+
+initQuestions();
+loadQuestion();
+</script>
+</body>
+</html>
